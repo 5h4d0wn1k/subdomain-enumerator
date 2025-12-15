@@ -14,6 +14,21 @@ from typing import Iterable, List, Tuple
 
 
 async def resolve(sub: str, domain: str, semaphore: asyncio.Semaphore, timeout: float) -> Tuple[str, bool]:
+    """
+    Resolve a subdomain to check if it exists.
+    
+    Performs DNS resolution for a subdomain using asyncio. Uses semaphore
+    for rate limiting and respects timeout.
+    
+    Args:
+        sub: Subdomain prefix (e.g., "www").
+        domain: Base domain (e.g., "example.com").
+        semaphore: Semaphore for rate limiting.
+        timeout: DNS resolution timeout in seconds.
+        
+    Returns:
+        Tuple of (FQDN, exists) where exists is True if resolution succeeded.
+    """
     fqdn = f"{sub}.{domain}".strip(".")
     async with semaphore:
         loop = asyncio.get_running_loop()
@@ -25,17 +40,56 @@ async def resolve(sub: str, domain: str, semaphore: asyncio.Semaphore, timeout: 
 
 
 async def run_enum(domain: str, words: Iterable[str], concurrency: int, timeout: float) -> List[str]:
+    """
+    Run subdomain enumeration for a domain.
+    
+    Tests multiple subdomain candidates concurrently and returns
+    those that resolve successfully.
+    
+    Args:
+        domain: Base domain to enumerate subdomains for.
+        words: Iterable of subdomain candidates (wordlist).
+        concurrency: Maximum concurrent DNS lookups.
+        timeout: Per-lookup timeout in seconds.
+        
+    Returns:
+        List of FQDNs that resolved successfully.
+    """
     semaphore = asyncio.Semaphore(concurrency)
-    tasks = [asyncio.create_task(resolve(w.strip(), domain, semaphore, timeout)) for w in words if w.strip()]
+    word_list = [w.strip() for w in words if w.strip()]
+    tasks = [
+        asyncio.create_task(resolve(w, domain, semaphore, timeout))
+        for w in word_list
+    ]
     hits: List[str] = []
+    completed = 0
+    total = len(tasks)
+    
     for coro in asyncio.as_completed(tasks):
         fqdn, ok = await coro
+        completed += 1
         if ok:
             hits.append(fqdn)
-    return hits
+            print(f"[+] Found: {fqdn} ({completed}/{total})")
+        elif completed % 100 == 0:
+            print(f"[*] Progress: {completed}/{total} tested...", end="\r")
+    
+    return sorted(set(hits))  # Return sorted unique results
 
 
 def load_words(path: str) -> List[str]:
+    """
+    Load wordlist from file.
+    
+    Reads subdomain candidates from a text file, one per line.
+    Empty lines and whitespace are ignored.
+    
+    Args:
+        path: Path to wordlist file.
+        
+    Returns:
+        List of subdomain candidates (stripped of whitespace).
+    """
     with open(path, "r", encoding="utf-8", errors="ignore") as f:
         return [line.strip() for line in f if line.strip()]
 
