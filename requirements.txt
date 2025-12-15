@@ -1,0 +1,7 @@
+# Requirements
+# Python 3.8+
+
+dnspython>=2.3.0
+
+# Optional dependencies for enhanced functionality
+# rich>=13.0.0  # For enhanced terminal output (optional)
